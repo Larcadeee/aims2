@@ -1,0 +1,36 @@
+/* style.css */
+
+.metric-container {
+    background-color: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+.metric-value { 
+    font-size: 28px; 
+    font-weight: bold; 
+    color: #333333; 
+}
+
+.metric-label { 
+    font-size: 14px; 
+    color: #666666; 
+}
+
+.footer-metric {
+    text-align: center; 
+    padding: 10px; 
+    border: 2px solid #63a4ff; 
+    border-radius: 10px; 
+    background-color: white;
+}
+
+.footer-value { 
+    color: #0056b3; 
+    font-size: 20px; 
+    font-weight: bold; 
+    margin-left: 10px; 
+}

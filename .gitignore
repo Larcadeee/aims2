@@ -1,0 +1,5 @@
+secrets.toml
+.env
+*.json
+secrets.toml
+__pycache__/
