@@ -45,4 +45,4 @@ websockets==16.0
 streamlit
 pandas
 plotly
-streamlit-gsheets-connection
+st-gsheets-connection
