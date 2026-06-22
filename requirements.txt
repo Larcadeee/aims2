@@ -46,3 +46,4 @@ streamlit
 pandas
 plotly
 st-gsheets-connection
+geopandas
