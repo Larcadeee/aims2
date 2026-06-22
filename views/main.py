@@ -100,9 +100,59 @@ with col_kpi:
 
 with col_map:
     st.markdown("**Butuan City Incident Heat Map**")
-    fig_map = px.scatter_mapbox(lat=[8.9475], lon=[125.5406], zoom=10, height=450)
-    fig_map.update_layout(mapbox_style="carto-positron", margin={"r":0,"t":0,"l":0,"b":0})
+
+    @st.cache_data(ttl=60)
+    def load_and_prepare_data():
+        import geopandas as gpd
+
+        gdf = gpd.read_file("Boundary.json", driver="TopoJSON")
+        if gdf.crs is None:
+            gdf = gdf.set_crs("EPSG:4326")
+        else:
+            gdf = gdf.to_crs("EPSG:4326")
+
+        sheet_url = (
+            "https://docs.google.com/spreadsheets/d/"
+            "1dAXks7FBX-LN130hMCEWBz5JcSqM1lijBhxAejuNgco/"
+            "export?format=csv&gid=1297922850"
+        )
+        df = pd.read_csv(sheet_url)
+
+        if 'BARANGAY' in df.columns:
+            df['BARANGAY'] = df['BARANGAY'].astype(str).str.upper().str.strip()
+            df['BARANGAY'] = df['BARANGAY'].str.replace(r'\s*POBLACION\s*\(BARANGAY\s*\d+.*?\)\s*', '', regex=True)
+            df['BARANGAY'] = df['BARANGAY'].str.replace('PORT POYOHON', 'FORT POYOHON')
+            df['BARANGAY'] = df['BARANGAY'].str.replace('JOSE RIZAL', 'J.P. RIZAL')
+
+        incident_counts = df['BARANGAY'].value_counts().reset_index()
+        incident_counts.columns = ['BARANGAY', 'Incident_Count']
+
+        merged_data = gdf.merge(incident_counts, left_on="BRANGAY", right_on="BARANGAY", how="left")
+        merged_data["Incident_Count"] = merged_data["Incident_Count"].fillna(0)
+
+        return merged_data, df
+
+    with st.spinner("Syncing with live ALIMAT OPCEN Database..."):
+        heatmap_data, raw_df = load_and_prepare_data()
+
+    fig_map = px.choropleth_mapbox(
+        heatmap_data,
+        geojson=heatmap_data.geometry,
+        locations=heatmap_data.index,
+        color="Incident_Count",
+        hover_name="BRANGAY",
+        hover_data={"Incident_Count": True},
+        color_continuous_scale="Reds",
+        mapbox_style="carto-positron",
+        center={"lat": 8.94, "lon": 125.54},
+        zoom=11,
+        opacity=0.75,
+        labels={"Incident_Count": "Total Incidents"},
+    )
+    fig_map.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
     st.plotly_chart(fig_map, use_container_width=True)
+
+    
 
 with col_donuts:
     if 'NATURE OF CALL' in df_incident.columns:
@@ -157,88 +207,7 @@ with col_bar:
         st.info("No Location Data Available")
 
 # -----------------------------------------------------------------------------
-# 6. RESOURCE TRACKER (Live Status & Availability)
-# -----------------------------------------------------------------------------
-st.markdown("---")
-st.markdown("<h4 style='color: #0056b3;'>🚑 RESOURCE TRACKER</h4>", unsafe_allow_html=True)
-
-if 'STATUS' in df_resources.columns and 'RESOURCES' in df_resources.columns:
-    df_resources['STATUS'] = df_resources['STATUS'].fillna('Unknown')
-    df_resources = df_resources.dropna(subset=['RESOURCES']) 
-    
-    available = df_resources[df_resources['STATUS'] == 'Available']
-    assigned = df_resources[df_resources['STATUS'] == 'Assigned']
-    unavailable = df_resources[df_resources['STATUS'].isin(['Not available', 'Out-of-order'])]
-    
-    r_col1, r_col2 = st.columns([1, 1.5])
-    
-    with r_col1:
-        st.markdown("**Fleet Availability Distribution**")
-        
-        # New distinct donut chart design (Thinner ring, labels inside)
-        status_counts = df_resources['STATUS'].value_counts().reset_index()
-        status_counts.columns = ['Status', 'Count']
-        
-        color_map = {
-            'Available': '#28a745', 
-            'Assigned': '#fd7e14', 
-            'Not available': '#dc3545', 
-            'Out-of-order': '#6c757d',
-            'Unknown': '#adb5bd'
-        }
-        
-        fig_res_donut = px.pie(
-            status_counts, 
-            values='Count', 
-            names='Status', 
-            hole=0.75, # Different thickness from the priority charts
-            color='Status',
-            color_discrete_map=color_map,
-            height=300
-        )
-        fig_res_donut.update_traces(textposition='inside', textinfo='percent+label', showlegend=False)
-        fig_res_donut.update_layout(margin=dict(t=10, b=10, l=10, r=10))
-        st.plotly_chart(fig_res_donut, use_container_width=True)
-        
-        # KPI Summary row under the chart
-        st.markdown(
-            f"<div style='text-align: center; padding: 10px;'>"
-            f"<span style='color:#28a745; font-weight:bold;'>🟢 Available: {len(available)}</span> &nbsp;&nbsp;|&nbsp;&nbsp; "
-            f"<span style='color:#fd7e14; font-weight:bold;'>🟠 Assigned: {len(assigned)}</span> &nbsp;&nbsp;|&nbsp;&nbsp; "
-            f"<span style='color:#dc3545; font-weight:bold;'>🔴 Unavailable: {len(unavailable)}</span>"
-            f"</div>", 
-            unsafe_allow_html=True
-        )
-
-    with r_col2:
-        st.markdown("**🟢 Ready for Dispatch (Available Resources)**")
-        st.write("Current operational units and their fuel status:")
-        
-        if not available.empty:
-            for _, row in available.iterrows():
-                res_name = row['RESOURCES']
-                fuel_lvl = row['FUEL'] if pd.notna(row['FUEL']) else "Unknown"
-                base = row['BASE STATION'] if pd.notna(row['BASE STATION']) else "Unknown Base"
-                
-                # Custom HTML layout for the elaborate tracker
-                st.markdown(f"""
-                <div style="border-left: 5px solid #28a745; margin-bottom: 12px; background-color: #f8f9fa; padding: 12px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <b style="font-size: 16px; color: #333;">{res_name}</b>
-                        <span style="background-color: #e6f4ea; color: #1e8e3e; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">AVAILABLE</span>
-                    </div>
-                    <div style="margin-top: 5px; color: #555; font-size: 14px;">
-                        ⛽ <b>Fuel Level:</b> {fuel_lvl} &nbsp;&nbsp; | &nbsp;&nbsp; 📍 <b>Base:</b> {base}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("No resources currently available.")
-else:
-    st.info("Resource Tracking data is currently unavailable. Please check spreadsheet headers.")
-
-# -----------------------------------------------------------------------------
-# 7. TIME METRICS (Bottom Row)
+# 6. TIME METRICS (Bottom Row)
 # -----------------------------------------------------------------------------
 st.write("") 
 foot_col1, foot_col2, foot_col3 = st.columns(3)
