@@ -105,7 +105,7 @@ with col_map:
     def load_and_prepare_data():
         import geopandas as gpd
 
-        gdf = gpd.read_file("../data/Boundary.json", driver="TopoJSON")
+        gdf = gpd.read_file("Boundary.json", driver="TopoJSON")
         if gdf.crs is None:
             gdf = gdf.set_crs("EPSG:4326")
         else:
