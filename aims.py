@@ -17,24 +17,24 @@ df = load_data()
 
 aims_page = st.Page(
     page="views/dispatch.py",
-    title="Dispatch Page",
-    icon=":material/ambulance:",
-    default=True,
+    title="Dispatch",
+    icon=":material/timer:",
 )
 
 
 resource_page = st.Page(
     page="views/resource.py",
-    title="Resource Page",
+    title="Resource",
     icon=":material/ambulance:",
 )
 
 main_page = st.Page(
     page="views/main.py",
-    title="Main Page",
-    icon=":material/ambulance:",
+    title="Main",
+    icon=":material/home:",
+    default=True,
 )
 
-pg = st.navigation(pages=[aims_page, resource_page, main_page ])
+pg = st.navigation(pages=[ main_page ,aims_page, resource_page])
 
 pg.run()

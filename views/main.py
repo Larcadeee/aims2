@@ -39,8 +39,7 @@ df_incident, df_resources, df_runtime = load_data()
 # 3. SIDEBAR (Filters)
 # -----------------------------------------------------------------------------
 with st.sidebar:
-    st.image("https://via.placeholder.com/200x100.png?text=CDRRMD+Logo", use_column_width=True)
-    st.markdown("### FILTERS")
+    
     
     date_filter = st.date_input("Date", value=None)
     time_filter = st.time_input("Time", value=None)
@@ -53,8 +52,7 @@ with st.sidebar:
         
     barangay_filter = st.selectbox("Barangay", barangay_list)
     
-    st.markdown("<br>" * 10, unsafe_allow_html=True)
-    st.image("https://via.placeholder.com/200x80.png?text=POWERED+BY:+HAZARDS+MONITORING", use_column_width=True)
+   
 
 # --- Apply Filters ---
 if date_filter:
