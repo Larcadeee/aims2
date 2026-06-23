@@ -24,41 +24,38 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 @st.cache_data(ttl=600)
 def load_data():
-    df_incident = conn.read(spreadsheet=url, worksheet="0", header=0) 
+    # Changed df_incident to df
+    df = conn.read(spreadsheet=url, worksheet="0", header=0) 
     df_resources = conn.read(spreadsheet=url, worksheet="1800080155", header=1) 
     df_runtime = conn.read(spreadsheet=url, worksheet="2145305755", header=0) 
     
-    if 'DATE' in df_incident.columns:
-        df_incident['DATE'] = pd.to_datetime(df_incident['DATE'], errors='coerce')
+    if 'DATE' in df.columns:
+        df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
         
-    return df_incident, df_resources, df_runtime
+    return df, df_resources, df_runtime
 
-df_incident, df_resources, df_runtime = load_data()
+df, df_resources, df_runtime = load_data()
 
 # -----------------------------------------------------------------------------
 # 3. SIDEBAR (Filters)
 # -----------------------------------------------------------------------------
 with st.sidebar:
-    
-    
     date_filter = st.date_input("Date", value=None)
     time_filter = st.time_input("Time", value=None)
     
-    if 'LOCATION/DESTINATION' in df_incident.columns:
-        barangays = df_incident['LOCATION/DESTINATION'].dropna().unique().tolist()
+    if 'LOCATION/DESTINATION' in df.columns:
+        barangays = df['LOCATION/DESTINATION'].dropna().unique().tolist()
         barangay_list = ["All"] + sorted(barangays)
     else:
         barangay_list = ["All"]
         
     barangay_filter = st.selectbox("Barangay", barangay_list)
-    
-   
 
-# --- Apply Filters ---
+# --- Apply Filters directly to df ---
 if date_filter:
-    df_incident = df_incident[df_incident['DATE'].dt.date == date_filter]
+    df = df[df['DATE'].dt.date == date_filter]
 if barangay_filter != "All":
-    df_incident = df_incident[df_incident['LOCATION/DESTINATION'] == barangay_filter]
+    df = df[df['LOCATION/DESTINATION'] == barangay_filter]
 
 # -----------------------------------------------------------------------------
 # 4. HEADER
@@ -75,14 +72,14 @@ with head_col2:
 # 5. MAIN DASHBOARD LAYOUT
 # -----------------------------------------------------------------------------
 
-# --- KPI Calculations ---
-total_calls = len(df_incident)
-disregarded = len(df_incident[df_incident['CALL STATUS'].astype(str).str.contains('Disregard', case=False, na=False)]) if 'CALL STATUS' in df_incident.columns else 0
+# --- KPI Calculations using filtered df ---
+total_calls = len(df)
+disregarded = len(df[df['CALL STATUS'].astype(str).str.contains('Disregard', case=False, na=False)]) if 'CALL STATUS' in df.columns else 0
 incident_calls = total_calls - disregarded
 
-if 'TYPE OF CALL' in df_incident.columns:
-    priority_1 = len(df_incident[df_incident['TYPE OF CALL'].astype(str).str.contains('Priority 1|P1', case=False, na=False)])
-    priority_2 = len(df_incident[df_incident['TYPE OF CALL'].astype(str).str.contains('Priority 2|P2', case=False, na=False)])
+if 'PRIORITY DISPATCH' in df.columns:
+    priority_1 = len(df[df['PRIORITY DISPATCH'].astype(str).str.contains('Priority 1|P1', case=False, na=False)])
+    priority_2 = len(df[df['PRIORITY DISPATCH'].astype(str).str.contains('Priority 2|P2', case=False, na=False)])
 else:
     priority_1, priority_2 = 0, 0
 
@@ -99,8 +96,9 @@ with col_kpi:
 with col_map:
     st.markdown("**Butuan City Incident Heat Map**")
 
+    # Pass the filtered dataframe as an argument to trigger re-caching when filters change
     @st.cache_data(ttl=60)
-    def load_and_prepare_data():
+    def load_and_prepare_data(filtered_df):
         import geopandas as gpd
 
         gdf = gpd.read_file("Boundary.json", driver="TopoJSON")
@@ -109,29 +107,29 @@ with col_map:
         else:
             gdf = gdf.to_crs("EPSG:4326")
 
-        sheet_url = (
-            "https://docs.google.com/spreadsheets/d/"
-            "1dAXks7FBX-LN130hMCEWBz5JcSqM1lijBhxAejuNgco/"
-            "export?format=csv&gid=1297922850"
-        )
-        df = pd.read_csv(sheet_url)
+        # Create a working copy of the filtered dataframe
+        temp_df = filtered_df.copy()
 
-        if 'BARANGAY' in df.columns:
-            df['BARANGAY'] = df['BARANGAY'].astype(str).str.upper().str.strip()
-            df['BARANGAY'] = df['BARANGAY'].str.replace(r'\s*POBLACION\s*\(BARANGAY\s*\d+.*?\)\s*', '', regex=True)
-            df['BARANGAY'] = df['BARANGAY'].str.replace('PORT POYOHON', 'FORT POYOHON')
-            df['BARANGAY'] = df['BARANGAY'].str.replace('JOSE RIZAL', 'J.P. RIZAL')
+        if 'LOCATION/DESTINATION' in temp_df.columns:
+            temp_df['BARANGAY'] = temp_df['LOCATION/DESTINATION'].astype(str).str.upper().str.strip()
+            temp_df['BARANGAY'] = temp_df['BARANGAY'].str.replace(r'\s*POBLACION\s*\(BARANGAY\s*\d+.*?\)\s*', '', regex=True)
+            temp_df['BARANGAY'] = temp_df['BARANGAY'].str.replace('PORT POYOHON', 'FORT POYOHON')
+            temp_df['BARANGAY'] = temp_df['BARANGAY'].str.replace('JOSE RIZAL', 'J.P. RIZAL')
 
-        incident_counts = df['BARANGAY'].value_counts().reset_index()
-        incident_counts.columns = ['BARANGAY', 'Incident_Count']
+            incident_counts = temp_df['BARANGAY'].value_counts().reset_index()
+            incident_counts.columns = ['BARANGAY', 'Incident_Count']
+        else:
+            import pandas as pd
+            incident_counts = pd.DataFrame(columns=['BARANGAY', 'Incident_Count'])
 
         merged_data = gdf.merge(incident_counts, left_on="BRANGAY", right_on="BARANGAY", how="left")
         merged_data["Incident_Count"] = merged_data["Incident_Count"].fillna(0)
 
-        return merged_data, df
+        return merged_data
 
     with st.spinner("Syncing with live ALIMAT OPCEN Database..."):
-        heatmap_data, raw_df = load_and_prepare_data()
+        # We pass df directly into the mapping function here
+        heatmap_data = load_and_prepare_data(df)
 
     fig_map = px.choropleth_mapbox(
         heatmap_data,
@@ -150,12 +148,10 @@ with col_map:
     fig_map.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
     st.plotly_chart(fig_map, use_container_width=True)
 
-    
-
 with col_donuts:
-    if 'NATURE OF CALL' in df_incident.columns:
-        p1_data = df_incident[df_incident['TYPE OF CALL'].astype(str).str.contains('Priority 1', case=False, na=False)]['NATURE OF CALL'].value_counts().reset_index()
-        p2_data = df_incident[df_incident['TYPE OF CALL'].astype(str).str.contains('Priority 2', case=False, na=False)]['NATURE OF CALL'].value_counts().reset_index()
+    if 'NATURE OF CALL' in df.columns:
+        p1_data = df[df['TYPE OF CALL'].astype(str).str.contains('Priority 1', case=False, na=False)]['NATURE OF CALL'].value_counts().reset_index()
+        p2_data = df[df['TYPE OF CALL'].astype(str).str.contains('Priority 2', case=False, na=False)]['NATURE OF CALL'].value_counts().reset_index()
     else:
         p1_data, p2_data = pd.DataFrame(), pd.DataFrame()
 
@@ -182,6 +178,7 @@ col_area, col_bar = st.columns([1, 1])
 
 with col_area:
     st.markdown("**Average Turnaround Time (Per Month)**")
+    # df_runtime stays the same since it's pulled from a completely different worksheet
     if 'MONTH' in df_runtime.columns and 'TURNAROUND TIME' in df_runtime.columns:
         df_runtime['TURNAROUND_NUM'] = pd.to_numeric(df_runtime['TURNAROUND TIME'], errors='coerce')
         df_trend = df_runtime.groupby('MONTH')['TURNAROUND_NUM'].mean().reset_index()
@@ -193,8 +190,8 @@ with col_area:
 
 with col_bar:
     st.markdown("**TOP 10 BARANGAY WITH INCIDENT REPORT**")
-    if 'LOCATION/DESTINATION' in df_incident.columns:
-        df_bar = df_incident['LOCATION/DESTINATION'].value_counts().head(10).reset_index()
+    if 'LOCATION/DESTINATION' in df.columns:
+        df_bar = df['LOCATION/DESTINATION'].value_counts().head(10).reset_index()
         df_bar.columns = ['Barangay', 'Incident Count']
         df_bar = df_bar.sort_values(by='Incident Count', ascending=True) 
         
