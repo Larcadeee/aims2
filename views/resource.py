@@ -57,7 +57,7 @@ if 'STATUS' in df_resources.columns and 'RESOURCES' in df_resources.columns:
         )
         fig_res_donut.update_traces(textposition='inside', textinfo='percent+label', showlegend=False)
         fig_res_donut.update_layout(margin=dict(t=10, b=10, l=10, r=10))
-        st.plotly_chart(fig_res_donut, use_container_width=True)
+        st.plotly_chart(fig_res_donut, width='stretch')
 
         st.markdown(
             f"<div style='text-align: center; padding: 10px;'>"

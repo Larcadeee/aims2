@@ -146,7 +146,7 @@ with col_map:
         labels={"Incident_Count": "Total Incidents"},
     )
     fig_map.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
-    st.plotly_chart(fig_map, use_container_width=True)
+    st.plotly_chart(fig_map, width='stretch')
 
 with col_donuts:
     if 'NATURE OF CALL' in df.columns:
@@ -160,16 +160,15 @@ with col_donuts:
         fig_donut1 = px.pie(p1_data, values='count', names='NATURE OF CALL', hole=0.6, height=200)
         fig_donut1.update_traces(textinfo='none', hoverinfo='label+percent')
         fig_donut1.update_layout(margin=dict(t=0, b=0, l=0, r=0), showlegend=False)
-        st.plotly_chart(fig_donut1, use_container_width=True)
+        st.plotly_chart(fig_donut1, width='stretch')
     else:
         st.caption("No Priority 1 data")
-
     st.markdown("<p style='font-size: 14px;'>Priority 2 Breakdown</p>", unsafe_allow_html=True)
     if not p2_data.empty:
         fig_donut2 = px.pie(p2_data, values='count', names='NATURE OF CALL', hole=0.6, height=200)
         fig_donut2.update_traces(textinfo='none', hoverinfo='label+percent')
         fig_donut2.update_layout(margin=dict(t=0, b=0, l=0, r=0), showlegend=False)
-        st.plotly_chart(fig_donut2, use_container_width=True)
+        st.plotly_chart(fig_donut2, width='stretch')
     else:
         st.caption("No Priority 2 data")
 
@@ -184,7 +183,7 @@ with col_area:
         df_trend = df_runtime.groupby('MONTH')['TURNAROUND_NUM'].mean().reset_index()
         fig_area = px.area(df_trend, x="MONTH", y="TURNAROUND_NUM", height=250)
         fig_area.update_layout(margin=dict(t=10, b=10, l=0, r=0), plot_bgcolor="rgba(0,0,0,0)", yaxis=(dict(showgrid=False)))
-        st.plotly_chart(fig_area, use_container_width=True)
+        st.plotly_chart(fig_area, width='stretch')
     else:
         st.info("Insufficient data for Trend Line")
 
@@ -197,14 +196,14 @@ with col_bar:
         
         fig_bar = px.bar(df_bar, x="Incident Count", y="Barangay", orientation='h', height=250, color_discrete_sequence=['#63a4ff'])
         fig_bar.update_layout(margin=dict(t=10, b=10, l=0, r=0), plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, width='stretch')
     else:
         st.info("No Location Data Available")
 
 # -----------------------------------------------------------------------------
 # 6. TIME METRICS (Bottom Row)
 # -----------------------------------------------------------------------------
-st.write("") 
+st.write("")
 foot_col1, foot_col2, foot_col3 = st.columns(3)
 
 def get_average_metric(col_name, default="0:00"):
