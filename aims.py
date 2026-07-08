@@ -35,6 +35,13 @@ main_page = st.Page(
     default=True,
 )
 
-pg = st.navigation(pages=[ main_page ,aims_page, resource_page])
+test_page = st.Page(
+    page="views/test.py",
+    title="Test",
+    icon=":material/home:",
+
+)
+
+pg = st.navigation(pages=[ main_page ,aims_page, resource_page, test_page])
 
 pg.run()

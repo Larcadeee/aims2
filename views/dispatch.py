@@ -10,7 +10,12 @@ st.write("This is the Dispatch Page. Here you can view and manage resources rela
 # 2. DATA FETCHING & PREPARATION
 # -----------------------------------------------------------------------------
 url = "https://docs.google.com/spreadsheets/d/1jjp2XBOEo3Mmd0BI691GEsQPH4tJsQWmt8w6bFqtvb4/edit?usp=sharing"
-conn = st.connection("gsheets", type=GSheetsConnection) @st.cache_data(ttl=600)
+
+# Define the connection first
+conn = st.connection("gsheets", type=GSheetsConnection) 
+
+# Place the decorator directly above the function
+@st.cache_data(ttl=600)
 def load_data():
     df_incident = conn.read(spreadsheet=url, worksheet="0", header=0) 
     df_resources = conn.read(spreadsheet=url, worksheet="1800080155", header=1) 
