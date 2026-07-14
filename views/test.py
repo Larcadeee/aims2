@@ -1,13 +1,17 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import geopandas as gpd # Added missing import
+import geopandas as gpd  # Fixed the syntax error here
+import re
+
+# Set up the dashboard layout
+st.set_page_config(page_title="OPCEN Dashboard", layout="wide")
 
 # Set up the dashboard layout
 st.set_page_config(page_title="OPCEN Dashboard", layout="wide")
 
 # -----------------------------------------------------------------------------
-# 1. MAP MODULE DEFINITION (Defined first so it can be called later)
+# 1. MAP MODULE DEFINITION
 # -----------------------------------------------------------------------------
 def render_incident_map(filtered_df, boundary_geojson_path="Boundary.json"):
     st.subheader("Butuan City Incident Heat Map")
@@ -15,7 +19,6 @@ def render_incident_map(filtered_df, boundary_geojson_path="Boundary.json"):
     @st.cache_data(ttl=60)
     def load_and_prepare_data(df, geo_path):
         try:
-            # Fixed variable name to gpd
             gdf = gpd.read_file(geo_path, driver="TopoJSON")
             if gdf.crs is None:
                 gdf = gdf.set_crs("EPSG:4326")
@@ -27,9 +30,7 @@ def render_incident_map(filtered_df, boundary_geojson_path="Boundary.json"):
 
         temp_df = df.copy()
 
-        # UPDATED: Using 'BARANGAY' column based on your provided DATASHEET.csv
         if 'BARANGAY' in temp_df.columns:
-            # Clean and format barangay names
             temp_df['MAP_BARANGAY'] = temp_df['BARANGAY'].astype(str).str.upper().str.strip()
             temp_df['MAP_BARANGAY'] = temp_df['MAP_BARANGAY'].str.replace(r'\s*POBLACION\s*\(BARANGAY\s*\d+.*?\)\s*', '', regex=True)
             temp_df['MAP_BARANGAY'] = temp_df['MAP_BARANGAY'].str.replace('PORT POYOHON', 'FORT POYOHON')
@@ -83,7 +84,11 @@ def get_avg_time_str(time_series):
 
 @st.cache_data(ttl=600)
 def load_live_data(url):
-    return pd.read_csv(url)
+    raw_df = pd.read_csv(url)
+    
+    # Clean Whitespaces out of headers
+    raw_df.columns = raw_df.columns.str.strip()
+    return raw_df
 
 # -----------------------------------------------------------------------------
 # 3. MAIN DASHBOARD UI
@@ -94,14 +99,35 @@ with st.spinner("Fetching live data from Google Sheets..."):
 
         # --- Calculations ---
         total_calls = len(df)
-        priority_1 = df['PRIORITY DISPATCH'].str.contains('Priority 1', na=False).sum()
-        priority_2 = df['PRIORITY DISPATCH'].str.contains('Priority 2', na=False).sum()
-        total_disregarded = df['PRIORITY DISPATCH'].str.contains('Not Applicable|Disregarded', na=False).sum()
+        
+        # --- CONDITIONAL EMERGENCY FILTER FOR PRIORITY 1 ---
+        if 'PRIORITY DISPATCH' in df.columns:
+            # 1. Define high-threat life safety conditions
+            p1_keywords = [
+                'Priority 1', 
+                'ABC', 
+                'Cardiac Arrest', 
+                'DOB', 
+                'Motor Vehicular Accident', 
+                'MVA'
+            ]
+            # 2. Create a joined case-insensitive regex pattern
+            p1_pattern = '|'.join(p1_keywords)
+            
+            # 3. Count rows that match priority terms
+            priority_1 = df['PRIORITY DISPATCH'].str.contains(p1_pattern, case=False, na=False).sum()
+            priority_2 = df['PRIORITY DISPATCH'].str.contains('Priority 2', case=False, na=False).sum()
+            total_disregarded = df['PRIORITY DISPATCH'].str.contains('Not Applicable|Disregarded', case=False, na=False).sum()
+        else:
+            priority_1 = 0
+            priority_2 = 0
+            total_disregarded = 0
+            
         incident_calls = total_calls - total_disregarded
 
-        avg_dispatch_time = get_avg_time_str(df['COMPUTED DISPATCH TIME'])
-        avg_run_time = get_avg_time_str(df['COMPUTED RUN TIME'])
-        avg_response_time = get_avg_time_str(df['COMPUTED RESPONSE TIME'])
+        avg_dispatch_time = get_avg_time_str(df['COMPUTED DISPATCH TIME']) if 'COMPUTED DISPATCH TIME' in df.columns else "00:00:00"
+        avg_run_time = get_avg_time_str(df['COMPUTED RUN TIME']) if 'COMPUTED RUN TIME' in df.columns else "00:00:00"
+        avg_response_time = get_avg_time_str(df['COMPUTED RESPONSE TIME']) if 'COMPUTED RESPONSE TIME' in df.columns else "00:00:00"
 
         # --- Layout ---
         st.title("ALIMAT Dashboard")
@@ -116,33 +142,67 @@ with st.spinner("Fetching live data from Google Sheets..."):
 
         st.markdown("<br>", unsafe_allow_html=True) 
         
-        col6, col7, col8, col9, col10 = st.columns(5)
-        with col6: st.metric(label="Avg Dispatch Time", value=avg_dispatch_time, border=True)
-        with col7: st.metric(label="Avg Run Time", value=avg_run_time, border=True)
-        with col8: st.metric(label="Avg Response Time", value=avg_response_time, border=True)
+       
 
         st.divider()
         
         # --- Split Layout for Chart and Map ---
-        chart_col, map_col = st.columns([1, 2])
+        chart_col, map_col = st.columns([1, 1])
         
         with chart_col:
-            st.subheader("Total Calls per Month")
-            if 'MONTH' in df.columns:
-                monthly_counts = df['MONTH'].value_counts()
-                months_order = ['January', 'February', 'March', 'April', 'May', 'June', 
-                                'July', 'August', 'September', 'October', 'November', 'December']
-                present_months = [m for m in months_order if m in monthly_counts.index]
-                monthly_counts = monthly_counts.reindex(present_months)
-                st.bar_chart(monthly_counts, color="#1f77b4")
+            st.subheader("Turn Around Time Trend")
+            
+            if 'TIMESTAMP' in df.columns and 'AVERAGED TURN AROUND TIME' in df.columns:
+                chart_df = df.copy()
+                chart_df['TIMESTAMP_CLEAN'] = pd.to_datetime(chart_df['TIMESTAMP'], errors='coerce')
+                
+                def formula_time_to_minutes(val):
+                    if pd.isna(val):
+                        return None
+                    val_str = str(val).strip()
+                    
+                    match = re.match(r'^(\d+):(\d{2}):(\d{2})$', val_str)
+                    if match:
+                        hours = int(match.group(1))
+                        minutes = int(match.group(2))
+                        seconds = int(match.group(3))
+                        return (hours * 60) + minutes + (seconds / 60.0)
+                        
+                    try:
+                        return float(val_str)
+                    except ValueError:
+                        return None
+
+                chart_df['Plot_Y'] = chart_df['AVERAGED TURN AROUND TIME'].apply(formula_time_to_minutes)
+                y_label = "Avg Turn Around Time (Minutes)"
+                
+                chart_df = chart_df.dropna(subset=['TIMESTAMP_CLEAN', 'Plot_Y'])
+                chart_df = chart_df.sort_values('TIMESTAMP_CLEAN')
+                
+                if not chart_df.empty:
+                    fig_line = px.line(
+                        chart_df,
+                        x='TIMESTAMP_CLEAN',
+                        y='Plot_Y',
+                        labels={'TIMESTAMP_CLEAN': 'Log Timeline', 'Plot_Y': y_label},
+                        markers=True
+                    )
+                    fig_line.update_layout(margin={"r": 10, "t": 40, "l": 10, "b": 10})
+                    st.plotly_chart(fig_line, use_container_width=True)
+                else:
+                    st.info("No matching numeric records available for timeline plot generation.")
             else:
-                st.warning("Could not find the 'MONTH' column.")
+                st.warning("Required columns ('TIMESTAMP' or 'AVERAGED TURN AROUND TIME') missing.")
                 
         with map_col:
-            # ACTUALLY CALLING THE MAP FUNCTION HERE
             render_incident_map(df, "Boundary.json")
 
         st.divider()
+
+        col6, col7, col8 = st.columns(3)
+        with col6: st.metric(label="Avg Dispatch Time", value=avg_dispatch_time, border=True)
+        with col7: st.metric(label="Avg Run Time", value=avg_run_time, border=True)
+        with col8: st.metric(label="Avg Response Time", value=avg_response_time, border=True)
 
         st.subheader("Live Data Table")
         st.dataframe(df, use_container_width=True)
